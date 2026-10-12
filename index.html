@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Parallax Stage</title>
+<style>
+:root{--bg:#f2f4f7;--panel:#fff;--line:#d9dee6;--text:#1c2330;--mute:#667085;--acc:#1e6fd9;--stage:#e6e9ef;box-sizing:border-box}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101319;--panel:#181c24;--line:#2a303b;--text:#e6e9ee;--mute:#8b94a3;--acc:#7cc4ff;--stage:#0b0d11}}
+:root[data-theme="dark"]{--bg:#101319;--panel:#181c24;--line:#2a303b;--text:#e6e9ee;--mute:#8b94a3;--acc:#7cc4ff;--stage:#0b0d11}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.4 "Avenir Next","Segoe UI",system-ui,sans-serif;display:grid;grid-template-columns:1fr 340px;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+main{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:12px;min-width:0;background:var(--stage)}
+#wrap{width:100%;max-width:calc((100vh - 120px)*16/9);aspect-ratio:16/9;border:1px solid var(--line);background:repeating-conic-gradient(#8883 0 25%,#0000 0 50%) 0 0/24px 24px}
+canvas{width:100%;height:100%;display:block}
+.bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+aside{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:18px}
+h2{font-size:15px;margin:0 0 8px;font-weight:650}
+button,.btn{font:inherit;color:var(--text);background:transparent;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+button:hover,.btn:hover{border-color:var(--acc)}
+button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+button:focus-visible,input:focus-visible,.btn:focus-within{outline:2px solid var(--acc);outline-offset:2px}
+#drop{border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--mute);margin-bottom:8px}
+#drop.over{border-color:var(--acc);color:var(--text)}
+.row{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.grid label{display:flex;gap:4px;align-items:center}
+.grid input{width:60px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:3px}
+select{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px;width:100%}
+.lay{display:flex;align-items:center;gap:4px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;margin-bottom:4px}
+.lay.sel{border-color:var(--acc)}
+.lay .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;background:none;border:0;text-align:left;padding:4px}
+.lay button{padding:2px 7px}
+.ctl{display:grid;grid-template-columns:78px 1fr 64px;gap:8px;align-items:center;margin-bottom:6px}
+.ctl input[type=number]{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:3px}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.mute{color:var(--mute)}
+@media (max-width:800px){body{grid-template-columns:1fr;grid-template-rows:auto auto;height:auto}aside{border-left:0;border-top:1px solid var(--line)}#wrap{max-width:100%}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<main>
+  <div id="wrap"><canvas id="cv" width="1920" height="1080"></canvas></div>
+  <div class="bar">
+    <button id="play" class="on">Pause</button>
+    <button id="rev">Reverse all</button>
+    <button id="png">Save PNG</button>
+    <button id="rec">Record WebM</button>
+  </div>
+</main>
+<aside>
+  <section>
+    <h2>Layers</h2>
+    <div id="drop">Drop images here<br><span class="mute">PNG with transparency works best</span></div>
+    <div class="row">
+      <label class="btn">Upload<input id="file" type="file" accept="image/*" multiple hidden></label>
+      <label class="btn">Upload sprite sheet<input id="sfile" type="file" accept="image/*" hidden></label>
+    </div>
+    <div class="row">
+      <button id="sample">Add sample scene</button>
+      <button id="walker">Add walker</button>
+      <button id="car">Add car</button>
+    </div>
+    <div id="list"></div>
+  </section>
+  <section>
+    <h2 id="seltitle">Selected layer</h2>
+    <div id="ctl"><p class="mute">Add a layer to start.</p></div>
+  </section>
+  <section>
+    <h2>Stage</h2>
+    <div class="ctl"><label for="mspd">Master speed</label><input id="mspd" type="range" min="0" max="3" step="0.05" value="1"><span id="mspdv">1.00×</span></div>
+    <div class="ctl"><label for="bg">Background</label><input id="bg" type="color" value="#1b2540"><span></span></div>
+    <label class="row"><input id="crisp" type="checkbox"> Crisp pixels (for pixel-art sprites)</label>
+    <button id="depth">Auto-depth speeds</button>
+    <p class="mute">Auto-depth spreads speeds from the back layer (slow) to the front layer (fast).</p>
+  </section>
+  <section>
+    <h2>Export loop video</h2>
+    <div class="ctl"><label for="xlen">Loop length</label><input id="xlen" type="number" min="2" max="120" value="20"><span class="mute">sec</span></div>
+    <div class="ctl"><label for="xfps">Frame rate</label><select id="xfps"><option value="30">30 fps</option><option value="60">60 fps</option></select><span></span></div>
+    <div class="ctl"><label for="xres">Size</label><select id="xres"><option value="1">1080p</option><option value="2">4K (upscaled)</option></select><span></span></div>
+    <button id="xbtn">Render loop MP4</button>
+    <p id="xstat" class="mute" style="white-space:pre-line">Renders frame by frame, so it never stutters. Layer speeds are nudged so every layer lines up exactly at the loop point. Needs a recent Chrome or Edge.</p>
+  </section>
+</aside>
+<script>
+const W=1920,H=1080,cv=document.getElementById('cv'),cx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let exporting=false,crisp=false,layers=[],sel=null,playing=true,master=1,rev=false,bg='#1b2540',uid=0;
+const mod=(a,n)=>((a%n)+n)%n;
+const SL=[['speed','Speed',0,800,1],['angle','Direction °',0,359,1],['op','Opacity',0,1,.01],['scale','Scale',.1,3,.01],['ox','Offset X',-1920,1920,1],['oy','Offset Y',-1080,1080,1]];
+
+function addLayer(img,name,fit){
+  const l={id:++uid,name,img,orig:img,blend:200,seam:false,w:img.width,h:img.height,speed:120,angle:180,op:1,scale:fit?H/img.height:1,ox:0,oy:0,tx:true,ty:false,vis:true,px:0,py:0};
+  layers.push(l);sel=l.id;ui();
+}
+function fromFile(f){
+  if(!f.type.startsWith('image/'))return;
+  const img=new Image();img.onload=()=>addLayer(img,f.name.replace(/\.[^.]+$/,''),true);img.src=URL.createObjectURL(f);
+}
+function mk(fn){const c=document.createElement('canvas');c.width=W;c.height=H;fn(c.getContext('2d'));return c}
+function ridge(c,base,amps,color){ // seamless: integer sine periods across the width
+  c.fillStyle=color;c.beginPath();c.moveTo(0,H);
+  for(let x=0;x<=W;x+=8){let y=base;amps.forEach(([k,a,p])=>y+=a*Math.sin(2*Math.PI*k*x/W+p));c.lineTo(x,y)}
+  c.lineTo(W,H);c.fill();
+}
+function sample(){
+  const stars=mk(c=>{c.fillStyle='#fff';for(let i=0;i<160;i++){c.globalAlpha=.3+Math.random()*.7;c.beginPath();c.arc(Math.random()*W,Math.random()*H*.6,Math.random()*2+.5,0,7);c.fill()}});
+  const far=mk(c=>ridge(c,640,[[3,70,0],[7,30,1]],'#2c3a63'));
+  const mid=mk(c=>ridge(c,760,[[4,60,2],[9,25,0]],'#22305a'));
+  const near=mk(c=>ridge(c,880,[[5,50,1],[11,20,3]],'#16213f'));
+  const fore=mk(c=>{ridge(c,980,[[6,25,0],[13,12,2]],'#0c1226');c.fillStyle='#0c1226';for(let i=0;i<14;i++){const x=i*W/14+40,h=120+Math.random()*100;c.beginPath();c.moveTo(x-30,1000);c.lineTo(x,1000-h);c.lineTo(x+30,1000);c.fill()}});
+  [['Stars',stars,15],['Far ridge',far,30],['Mid ridge',mid,70],['Near ridge',near,140],['Foreground',fore,260]].forEach(([n,c,s])=>{if(n==='Foreground')addSprite(walkerSheet(),'Walker',{cols:8,frames:8,fps:9,sx:560,sy:945,bob:5});addLayer(c,n);layers[layers.length-1].speed=s});
+}
+
+function addSprite(img,name,o={}){
+  const cols=o.cols||Math.max(1,Math.round(img.width/img.height));
+  const l={id:++uid,type:'sprite',name,img,cols,rows:o.rows||1,frames:o.frames||cols,fps:o.fps||10,sx:o.sx??600,sy:o.sy??960,scale:o.scale??Math.min(1,400/(img.height/(o.rows||1))),op:1,flip:false,mode:o.mode||'tread',tspeed:o.tspeed??120,bob:o.bob??0,vis:true,ft:0,bt:0,tp:0};
+  layers.push(l);sel=l.id;ui();
+}
+function limb(g,x,y,a1,l1,a2,l2){const kx=x+Math.sin(a1)*l1,ky=y+Math.cos(a1)*l1;g.beginPath();g.moveTo(x,y);g.lineTo(kx,ky);g.lineTo(kx+Math.sin(a2)*l2,ky+Math.cos(a2)*l2);g.stroke()}
+function walkerSheet(){
+  const N=8,fw=160,fh=200,c=document.createElement('canvas');c.width=fw*N;c.height=fh;const g=c.getContext('2d');
+  g.lineCap=g.lineJoin='round';g.lineWidth=11;
+  const pair=(q,col)=>{g.strokeStyle=col;const t=.6*Math.sin(q);limb(g,80,114,t,42,t-.9*Math.max(0,Math.cos(q)),42);const u=-.55*Math.sin(q);limb(g,80,60,u,30,u+.5,28)};
+  for(let i=0;i<N;i++){
+    g.save();g.translate(i*fw,0);const p=i/N*2*Math.PI;
+    pair(p+Math.PI,'#b8906a');
+    g.strokeStyle='#ffd9a8';g.lineWidth=14;g.beginPath();g.moveTo(80,58);g.lineTo(82,114);g.stroke();g.lineWidth=11;
+    g.fillStyle='#ffd9a8';g.beginPath();g.arc(84,36,16,0,7);g.fill();
+    pair(p,'#ffd9a8');
+    g.restore();
+  }
+  return c;
+}
+function carSheet(){
+  const N=6,fw=220,fh=120,c=document.createElement('canvas');c.width=fw*N;c.height=fh;const g=c.getContext('2d');
+  for(let i=0;i<N;i++){
+    g.save();g.translate(i*fw,0);
+    g.fillStyle='#e85d4a';g.beginPath();g.roundRect(10,52,200,42,14);g.fill();
+    g.beginPath();g.moveTo(52,52);g.lineTo(80,22);g.lineTo(146,22);g.lineTo(176,52);g.closePath();g.fill();
+    g.fillStyle='#bfe3ff';g.beginPath();g.moveTo(64,50);g.lineTo(84,29);g.lineTo(108,29);g.lineTo(108,50);g.closePath();g.fill();
+    g.beginPath();g.moveTo(116,50);g.lineTo(116,29);g.lineTo(142,29);g.lineTo(162,50);g.closePath();g.fill();
+    g.fillStyle='#ffe28a';g.fillRect(200,60,10,10);
+    [60,166].forEach(wx=>{
+      g.fillStyle='#12161f';g.beginPath();g.arc(wx,96,22,0,7);g.fill();
+      g.fillStyle='#aab3c2';g.beginPath();g.arc(wx,96,12,0,7);g.fill();
+      g.strokeStyle='#12161f';g.lineWidth=4;
+      for(let k=0;k<4;k++){const a=i/N*Math.PI/2+k*Math.PI/2;g.beginPath();g.moveTo(wx,96);g.lineTo(wx+Math.cos(a)*11,96+Math.sin(a)*11);g.stroke()}
+    });
+    g.restore();
+  }
+  return c;
+}
+function spriteStep(l,dt){
+  l.ft+=l.fps*master*dt;
+  l.bt+=l.fps/Math.max(1,l.frames)*2*Math.PI*master*dt;
+  if(l.mode==='travel')l.tp+=(l.flip?-1:1)*(rev?-1:1)*l.tspeed*master*dt;
+}
+function drawSprite(l){
+  const fw=l.img.width/l.cols,fh=l.img.height/l.rows,n=Math.max(1,Math.min(l.frames,l.cols*l.rows));
+  const f=Math.floor(l.ft)%n,c=f%l.cols,r=Math.floor(f/l.cols),dw=fw*l.scale,dh=fh*l.scale;
+  const x=l.mode==='travel'?mod(l.sx+l.tp,W+dw)-dw/2:l.sx;
+  const y=l.sy-Math.abs(Math.sin(l.bt))*l.bob;
+  cx.save();cx.globalAlpha=l.op;cx.translate(x,y);
+  if(l.flip!==rev)cx.scale(-1,1);
+  cx.drawImage(l.img,c*fw,r*fh,fw,fh,-dw/2,-dh,dw,dh);
+  cx.restore();
+}
+const SP=[['op','Opacity',0,1,.01],['scale','Scale',.1,4,.01],['sx','X',0,1920,1],['sy','Y (feet)',0,1080,1],['fps','Frame rate',1,30,1],['bob','Bounce px',0,40,1],['tspeed','Travel speed',0,600,1]];
+function spriteControls(l,box){
+  SP.forEach(([k,lab,min,max,step])=>{
+    const r=document.createElement('div');r.className='ctl';
+    r.innerHTML=`<label>${lab}</label><input type="range" min="${min}" max="${max}" step="${step}"><input type="number" step="${step}">`;
+    const [,a,b]=r.children;a.value=b.value=l[k];
+    a.oninput=()=>{l[k]=+a.value;b.value=a.value};
+    b.oninput=()=>{l[k]=+b.value;a.value=b.value};
+    box.appendChild(r);
+  });
+  const m=document.createElement('div');m.className='ctl';
+  m.innerHTML='<label>Motion</label><select><option value="tread">Stay in place</option><option value="travel">Travel across stage</option></select><span></span>';
+  const s=m.querySelector('select');s.value=l.mode;s.onchange=()=>{l.mode=s.value;l.tp=0};
+  box.appendChild(m);
+  const f=document.createElement('div');f.className='row';
+  f.innerHTML='<label><input type="checkbox"> Face left</label>';
+  const fc=f.querySelector('input');fc.checked=l.flip;fc.onchange=()=>l.flip=fc.checked;
+  box.appendChild(f);
+  const g=document.createElement('div');g.className='row grid';
+  g.innerHTML='<label>Columns <input type="number" min="1"></label><label>Rows <input type="number" min="1"></label><label>Frames <input type="number" min="1"></label>';
+  ['cols','rows','frames'].forEach((k,i)=>{const inp=g.querySelectorAll('input')[i];inp.value=l[k];inp.oninput=()=>{l[k]=Math.max(1,+inp.value||1)}});
+  box.appendChild(g);
+  const p=document.createElement('p');p.className='mute';p.textContent='Frames read left to right, top to bottom. The feet sit at the X and Y point. Stay in place suits a character walking over a scrolling background. Travel moves it across the stage and wraps around.';
+  box.appendChild(p);
+}
+function makeSeamless(l){
+  const src=l.orig,w=src.width,h=src.height,b=Math.min(Math.round(l.blend),Math.floor(w/2)-1);
+  if(b<2)return;
+  const o=document.createElement('canvas');o.width=w-b;o.height=h;const g=o.getContext('2d');
+  g.drawImage(src,w-b,0,b,h,0,0,b,h);
+  const s=document.createElement('canvas');s.width=b;s.height=h;const sg=s.getContext('2d');
+  sg.drawImage(src,0,0,b,h,0,0,b,h);
+  sg.globalCompositeOperation='destination-in';
+  const gr=sg.createLinearGradient(0,0,b,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,1)');
+  sg.fillStyle=gr;sg.fillRect(0,0,b,h);
+  g.drawImage(s,0,0);
+  g.drawImage(src,b,0,w-2*b,h,b,0,w-2*b,h);
+  l.img=o;l.w=o.width;l.h=o.height;l.seam=true;
+}
+function undoSeamless(l){l.img=l.orig;l.w=l.orig.width;l.h=l.orig.height;l.seam=false}
+function ui(){
+  const list=$('list');list.innerHTML='';
+  [...layers].reverse().forEach(l=>{
+    const d=document.createElement('div');d.className='lay'+(l.id===sel?' sel':'');
+    d.innerHTML=`<button class="nm"></button><button title="Bring forward" data-a="up">▲</button><button title="Send back" data-a="dn">▼</button><button title="Show or hide" data-a="vis">${l.vis?'Hide':'Show'}</button><button title="Delete" data-a="del">✕</button>`;
+    d.querySelector('.nm').textContent=l.name;
+    d.querySelector('.nm').onclick=()=>{sel=l.id;ui()};
+    d.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{
+      const i=layers.indexOf(l),a=b.dataset.a;
+      if(a==='up'&&i<layers.length-1)[layers[i],layers[i+1]]=[layers[i+1],layers[i]];
+      if(a==='dn'&&i>0)[layers[i],layers[i-1]]=[layers[i-1],layers[i]];
+      if(a==='vis')l.vis=!l.vis;
+      if(a==='del'){layers.splice(i,1);if(sel===l.id)sel=layers.length?layers[layers.length-1].id:null}
+      ui();
+    });
+    list.appendChild(d);
+  });
+  controls();
+}
+function controls(){
+  const l=layers.find(x=>x.id===sel),box=$('ctl');
+  if(!l){box.innerHTML='<p class="mute">Add a layer to start.</p>';$('seltitle').textContent='Selected layer';return}
+  $('seltitle').textContent=l.name;
+  box.innerHTML='';
+  if(l.type==='sprite')return spriteControls(l,box);
+  SL.forEach(([k,lab,min,max,step])=>{
+    const r=document.createElement('div');r.className='ctl';
+    r.innerHTML=`<label>${lab}</label><input type="range" min="${min}" max="${max}" step="${step}"><input type="number" step="${step}">`;
+    const [,a,b]=r.children;a.value=b.value=l[k];
+    a.oninput=()=>{l[k]=+a.value;b.value=a.value};
+    b.oninput=()=>{l[k]=+b.value;a.value=b.value};
+    box.appendChild(r);
+  });
+  const dirs=document.createElement('div');dirs.className='row';
+  [['←',180],['→',0],['↑',270],['↓',90]].forEach(([t,a])=>{const b=document.createElement('button');b.textContent=t;b.title='Set direction';b.onclick=()=>{l.angle=a;controls()};dirs.appendChild(b)});
+  const fit=document.createElement('button');fit.textContent='Fit to stage height';fit.title='Scale so the layer is exactly as tall as the stage';fit.onclick=()=>{l.scale=H/l.h;controls()};dirs.appendChild(fit);
+  box.appendChild(dirs);
+  const tl=document.createElement('div');tl.className='row';
+  tl.innerHTML='<label><input type="checkbox" id="tx"> Loop horizontally</label><label><input type="checkbox" id="ty"> Loop vertically</label>';
+  box.appendChild(tl);
+  $('tx').checked=l.tx;$('ty').checked=l.ty;
+  $('tx').onchange=e=>l.tx=e.target.checked;$('ty').onchange=e=>l.ty=e.target.checked;
+  const bl=document.createElement('div');bl.className='ctl';
+  bl.innerHTML='<label>Blend edge px</label><input type="range" min="20" max="600" step="5"><input type="number" step="5">';
+  const [,ba,bb]=bl.children;ba.value=bb.value=l.blend;
+  ba.oninput=()=>{l.blend=+ba.value;bb.value=ba.value};bb.oninput=()=>{l.blend=+bb.value;ba.value=bb.value};
+  box.appendChild(bl);
+  const br=document.createElement('div');br.className='row';
+  br.innerHTML='<button>Make seamless</button><button>Undo</button>';
+  br.children[0].onclick=()=>{makeSeamless(l);controls()};
+  br.children[1].onclick=()=>{undoSeamless(l);controls()};
+  br.children[1].disabled=!l.seam;
+  box.appendChild(br);
+  const sn=document.createElement('p');sn.className='mute';
+  sn.textContent=l.seam?'Seamless applied. The layer is now '+l.w+' px wide.':'Blends the left and right edges so the layer loops without a visible join. It shortens the layer by the blend width. Larger values hide the join better but soften details near the edges.';
+  box.appendChild(sn);
+  const p=document.createElement('p');p.className='mute';p.textContent='Direction: 0° right, 90° down, 180° left, 270° up. Axes that do not loop stay at their offset.';box.appendChild(p);
+}
+
+function draw(){
+  cx.imageSmoothingEnabled=!crisp;
+  cx.globalAlpha=1;cx.fillStyle=bg;cx.fillRect(0,0,W,H);
+  for(const l of layers){
+    if(!l.vis)continue;
+    if(l.type==='sprite'){drawSprite(l);continue}
+    const w=l.w*l.scale,h=l.h*l.scale;if(w<1||h<1)continue;
+    cx.globalAlpha=l.op;
+    const sx=l.tx?mod(l.px+l.ox,w)-w:l.ox, sy=l.ty?mod(l.py+l.oy,h)-h:l.oy;
+    for(let x=sx;x<W;x+=w){for(let y=sy;y<H;y+=h){cx.drawImage(l.img,x,y,w,h);if(!l.ty)break}if(!l.tx)break}
+  }
+  cx.globalAlpha=1;
+}
+let last=performance.now();
+function frame(t){
+  const dt=Math.min(.1,(t-last)/1000);last=t;
+  if(exporting){requestAnimationFrame(frame);return}
+  if(playing)for(const l of layers){if(l.type==='sprite'){spriteStep(l,dt);continue}const r=l.angle*Math.PI/180,v=l.speed*master*(rev?-1:1)*dt;l.px+=Math.cos(r)*v;l.py+=Math.sin(r)*v}
+  draw();requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+$('play').onclick=e=>{playing=!playing;e.target.textContent=playing?'Pause':'Play';e.target.classList.toggle('on',playing)};
+$('rev').onclick=e=>{rev=!rev;e.target.classList.toggle('on',rev)};
+$('mspd').oninput=e=>{master=+e.target.value;$('mspdv').textContent=master.toFixed(2)+'×'};
+$('bg').oninput=e=>bg=e.target.value;
+$('sample').onclick=sample;
+$('walker').onclick=()=>addSprite(walkerSheet(),'Walker',{cols:8,frames:8,fps:9,sx:600,sy:960,bob:5});
+$('car').onclick=()=>addSprite(carSheet(),'Car',{cols:6,frames:6,fps:14,sx:600,sy:1010,bob:3,scale:1.3});
+$('sfile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const img=new Image();img.onload=()=>addSprite(img,f.name.replace(/\.[^.]+$/,''));img.src=URL.createObjectURL(f)};
+$('crisp').onchange=e=>crisp=e.target.checked;
+$('file').onchange=e=>{[...e.target.files].forEach(fromFile);e.target.value=''};
+$('depth').onclick=()=>{const v=layers.filter(l=>l.vis&&l.type!=='sprite');v.forEach((l,i)=>l.speed=Math.round(20+(v.length>1?i/(v.length-1):1)*280));controls()};
+const dz=$('drop');
+['dragenter','dragover'].forEach(n=>addEventListener(n,e=>{e.preventDefault();dz.classList.add('over')}));
+['dragleave','drop'].forEach(n=>addEventListener(n,e=>{e.preventDefault();dz.classList.remove('over')}));
+addEventListener('drop',e=>[...e.dataTransfer.files].forEach(fromFile));
+
+let dl=null;
+async function save(blob,name){
+  try{if(!dl&&window.claude&&claude.use)dl=await claude.use('downloads')}catch(e){}
+  if(dl){
+    try{await dl.save({filename:name,data:blob})}
+    catch(e){if(!e||e.code!=='declined')alert('Could not save the file: '+((e&&e.message)||e))}
+    return;
+  }
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+$('png').onclick=()=>{draw();cv.toBlob(b=>save(b,'parallax-frame.png'))};
+function snap(L){
+  const P={},rows=[],m=master*(rev?-1:1);
+  for(const l of layers){
+    if(!l.vis)continue;
+    if(l.type==='sprite'){
+      const n=Math.max(1,Math.min(l.frames,l.cols*l.rows)),f=l.fps*Math.abs(master);
+      const cyc=f>0?Math.max(1,Math.round(f*L/n)):0,fps2=cyc*n/L;
+      let v=0;const Wp=(l.img.width/l.cols)*l.scale+W;
+      if(l.mode==='travel'&&master!==0&&l.tspeed>0){
+        const sg=(l.flip?-1:1)*(rev?-1:1)*Math.sign(master),k=Math.max(1,Math.round(l.tspeed*Math.abs(master)*L/Wp));
+        v=sg*k*Wp/L;
+      }
+      P[l.id]={n,fps2,v};
+      rows.push(l.name+': '+f.toFixed(1)+' to '+fps2.toFixed(1)+' fps'+(v?', travels at '+Math.abs(v).toFixed(0)+' px/s':''));
+    }else{
+      const r=l.angle*Math.PI/180,w=l.w*l.scale,h=l.h*l.scale,sp=l.speed*m;
+      let vx=0,vy=0;
+      if(l.tx)vx=Math.round(Math.cos(r)*sp*L/w)*w/L;
+      if(l.ty)vy=Math.round(Math.sin(r)*sp*L/h)*h/L;
+      P[l.id]={vx,vy};
+      const got=Math.hypot(vx,vy);
+      rows.push(l.name+': '+Math.abs(l.speed*master).toFixed(0)+' to '+got.toFixed(1)+' px/s'+(got===0&&l.speed*master!==0?' (too slow for this loop length, so it stays still)':''));
+    }
+  }
+  return {P,rows};
+}
+function setTime(t,P){
+  for(const l of layers){
+    const p=P[l.id];if(!p)continue;
+    if(l.type==='sprite'){l.ft=p.fps2*t;l.bt=2*Math.PI*(p.fps2/p.n)*t;l.tp=p.v*t}
+    else{l.px=p.vx*t;l.py=p.vy*t}
+  }
+}
+function mux(chs,desc,w,h,fps){
+  const te=s=>new TextEncoder().encode(s);
+  const u32=n=>{const a=new Uint8Array(4);new DataView(a.buffer).setUint32(0,n>>>0);return a};
+  const u16=n=>{const a=new Uint8Array(2);new DataView(a.buffer).setUint16(0,n);return a};
+  const cat=ps=>{let n=0;for(const p of ps)n+=p.length;const o=new Uint8Array(n);let i=0;for(const p of ps){o.set(p,i);i+=p.length}return o};
+  const z=n=>new Uint8Array(n);
+  const bx=(t,...p)=>{const b=cat(p);return cat([u32(b.length+8),te(t),b])};
+  const fb=(t,v,f,...p)=>bx(t,u32((v<<24)|f),...p);
+  const N=chs.length,TS=fps*1000,dur=N*1000;
+  const mat=cat([0x10000,0,0,0,0x10000,0,0,0,0x40000000].map(u32));
+  const ftyp=bx('ftyp',te('isom'),u32(512),te('isomiso2avc1mp41'));
+  const data=cat(chs.map(c=>c.d));
+  const mdat=cat([u32(data.length+8),te('mdat'),data]);
+  const avc1=bx('avc1',z(6),u16(1),z(16),u16(w),u16(h),u32(0x480000),u32(0x480000),z(4),u16(1),z(32),u16(0x18),u16(0xffff),bx('avcC',desc));
+  const keys=[];chs.forEach((c,i)=>{if(c.key)keys.push(i+1)});
+  const stbl=bx('stbl',
+    fb('stsd',0,0,u32(1),avc1),
+    fb('stts',0,0,u32(1),u32(N),u32(1000)),
+    fb('stss',0,0,u32(keys.length),cat(keys.map(u32))),
+    fb('stsc',0,0,u32(1),u32(1),u32(N),u32(1)),
+    fb('stsz',0,0,u32(0),u32(N),cat(chs.map(c=>u32(c.d.length)))),
+    fb('stco',0,0,u32(1),u32(ftyp.length+8)));
+  const dinf=bx('dinf',fb('dref',0,0,u32(1),fb('url ',0,1)));
+  const minf=bx('minf',fb('vmhd',0,1,z(8)),dinf,stbl);
+  const hdlr=fb('hdlr',0,0,u32(0),te('vide'),z(12),te('VideoHandler\0'));
+  const mdhd=fb('mdhd',0,0,u32(0),u32(0),u32(TS),u32(dur),u16(0x55c4),u16(0));
+  const tkhd=fb('tkhd',0,3,u32(0),u32(0),u32(1),z(4),u32(dur),z(8),u16(0),u16(0),u16(0),u16(0),mat,u32(w*65536),u32(h*65536));
+  const mvhd=fb('mvhd',0,0,u32(0),u32(0),u32(TS),u32(dur),u32(0x10000),u16(0x100),z(10),mat,z(24),u32(2));
+  const moov=bx('moov',mvhd,bx('trak',tkhd,bx('mdia',mdhd,hdlr,minf)));
+  return new Blob([ftyp,mdat,moov],{type:'video/mp4'});
+}
+async function renderLoop(){
+  const st=$('xstat'),btn=$('xbtn');
+  if(!window.VideoEncoder||!window.VideoFrame){st.textContent='This browser has no video encoder. Use a recent Chrome or Edge.';return}
+  if(mr){st.textContent='Stop the WebM recording first.';return}
+  const L=Math.max(2,Math.min(120,+$('xlen').value||20)),fps=+$('xfps').value,sc=+$('xres').value;
+  const N=Math.round(L*fps),OW=W*sc,OH=H*sc,{P,rows}=snap(L);
+  const cfg={codec:sc>1?(fps>30?'avc1.640034':'avc1.640033'):'avc1.64002A',width:OW,height:OH,bitrate:sc>1?40e6:16e6,framerate:fps,avc:{format:'avc'}};
+  let ok=false;try{ok=(await VideoEncoder.isConfigSupported(cfg)).supported}catch(e){}
+  if(!ok){st.textContent='This browser cannot encode H.264 at that size. Try 1080p, or another browser.';return}
+  exporting=true;btn.disabled=true;
+  const saved=layers.map(l=>[l.px,l.py,l.ft,l.bt,l.tp]);
+  const chs=[];let desc=null,err=null;
+  const enc=new VideoEncoder({
+    output:(c,meta)=>{const d=new Uint8Array(c.byteLength);c.copyTo(d);chs.push({d,key:c.type==='key'});
+      const x=meta&&meta.decoderConfig&&meta.decoderConfig.description;
+      if(x)desc=ArrayBuffer.isView(x)?new Uint8Array(x.buffer,x.byteOffset,x.byteLength).slice():new Uint8Array(x.slice(0))},
+    error:e=>{err=e}});
+  try{
+    enc.configure(cfg);
+    cv.width=OW;cv.height=OH;
+    for(let i=0;i<N;i++){
+      if(err)throw err;
+      setTime(i/fps,P);
+      cx.setTransform(sc,0,0,sc,0,0);draw();
+      const fr=new VideoFrame(cv,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
+      enc.encode(fr,{keyFrame:i%(fps*2)===0});fr.close();
+      if(i%4===0){st.textContent='Rendering frame '+(i+1)+' of '+N;await new Promise(r=>setTimeout(r))}
+      while(enc.encodeQueueSize>6)await new Promise(r=>setTimeout(r,5));
+    }
+    await enc.flush();
+    if(err)throw err;
+    if(!desc)throw new Error('encoder gave no codec description');
+    save(mux(chs,desc,OW,OH,fps),'parallax-loop-'+OH+'p-'+L+'s.mp4');
+    st.textContent='Done. Confirm the save when prompted ('+N+' frames, '+L+' s, loops exactly).\nSpeeds used:\n'+rows.join('\n');
+  }catch(e){st.textContent='Export failed: '+(e&&e.message||e)}
+  finally{
+    cv.width=W;cv.height=H;cx.setTransform(1,0,0,1,0,0);
+    layers.forEach((l,i)=>[l.px,l.py,l.ft,l.bt,l.tp]=saved[i]);
+    exporting=false;btn.disabled=false;
+    try{if(enc.state!=='closed')enc.close()}catch(e){}
+  }
+}
+$('xbtn').onclick=renderLoop;
+let mr=null,chunks=[];
+$('rec').onclick=e=>{
+  if(mr){mr.stop();return}
+  if(!window.MediaRecorder){e.target.textContent='Recording not supported';return}
+  chunks=[];mr=new MediaRecorder(cv.captureStream(60),{mimeType:MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm',videoBitsPerSecond:12e6});
+  mr.ondataavailable=d=>d.data.size&&chunks.push(d.data);
+  mr.onstop=()=>{save(new Blob(chunks,{type:'video/webm'}),'parallax.webm');mr=null;e.target.textContent='Record WebM';e.target.classList.remove('on')};
+  mr.start();e.target.textContent='Stop and save';e.target.classList.add('on');
+};
+ui();
+</script>
+</body>
+</html>
